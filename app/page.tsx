@@ -1,12 +1,13 @@
 "use client";
 import { useState, useEffect } from "react";
-// Note les deux points ".." pour remonter à la racine chercher le fichier
+// On garde l'import de ta config
 import { db } from "../firebaseConfig"; 
 import { 
   collection, 
   addDoc, 
   getDocs, 
   deleteDoc, 
+  updateDoc, // <--- NOUVEAU : Pour modifier
   doc, 
   query, 
   orderBy 
@@ -15,6 +16,7 @@ import {
 export default function Home() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [newTask, setNewTask] = useState("");
+  const [loading, setLoading] = useState(true);
 
   // Charger les tâches
   useEffect(() => {
@@ -29,6 +31,7 @@ export default function Home() {
       ...doc.data()
     }));
     setTasks(data);
+    setLoading(false);
   }
 
   // Ajouter une tâche
@@ -37,13 +40,26 @@ export default function Home() {
     try {
       await addDoc(collection(db, "tasks"), {
         title: newTask,
-        createdAt: new Date()
+        createdAt: new Date(),
+        completed: false // <--- NOUVEAU : Par défaut, la tâche n'est pas finie
       });
       setNewTask(""); 
       fetchTasks();
     } catch (e) {
       console.error("Erreur : ", e);
     }
+  }
+
+  // NOUVEAU : Cocher / Décocher une tâche
+  async function toggleTask(id: string, currentStatus: boolean) {
+    // On dit à Firebase : "Prends ce document et inverse la valeur de 'completed'"
+    await updateDoc(doc(db, "tasks", id), {
+      completed: !currentStatus
+    });
+    // On met à jour l'affichage localement tout de suite (plus rapide pour l'œil)
+    setTasks(tasks.map(task => 
+      task.id === id ? { ...task, completed: !currentStatus } : task
+    ));
   }
 
   // Supprimer une tâche
@@ -53,39 +69,68 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center p-10">
-      <h1 className="text-4xl font-bold mb-8 text-yellow-500">Ma Todo List Firebase 🔥</h1>
+    <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center p-10 font-sans">
+      <h1 className="text-4xl font-bold mb-8 text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">
+        Ma Todo List V2 🔥
+      </h1>
       
-      <div className="flex gap-2 mb-8">
+      {/* Zone d'ajout */}
+      <div className="flex gap-2 mb-8 w-full max-w-md">
         <input
           type="text"
-          placeholder="Nouvelle tâche..."
-          className="p-2 rounded text-black"
+          placeholder="Qu'allons-nous faire ?"
+          className="flex-1 p-3 rounded-lg bg-gray-800 border border-gray-700 focus:outline-none focus:border-yellow-500 transition"
           value={newTask}
           onChange={(e) => setNewTask(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && addTask()}
         />
         <button 
           onClick={addTask}
-          className="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded font-bold text-black"
+          className="bg-yellow-500 hover:bg-yellow-600 text-black px-6 py-3 rounded-lg font-bold transition transform active:scale-95"
         >
-          Ajouter
+          +
         </button>
       </div>
 
-      <ul className="w-full max-w-md space-y-3">
-        {tasks.map((task) => (
-          <li key={task.id} className="flex justify-between items-center bg-gray-800 p-4 rounded shadow border-l-4 border-yellow-500">
-            <span>{task.title}</span>
-            <button 
-              onClick={() => deleteTask(task.id)}
-              className="text-red-400 hover:text-red-600 text-sm"
+      {/* Liste des tâches */}
+      {loading ? (
+        <p className="text-gray-500 animate-pulse">Chargement...</p>
+      ) : (
+        <ul className="w-full max-w-md space-y-3">
+          {tasks.map((task) => (
+            <li 
+              key={task.id} 
+              className={`
+                flex justify-between items-center p-4 rounded-lg shadow-lg transition-all duration-300
+                ${task.completed ? "bg-gray-800/50 opacity-60" : "bg-gray-800 border-l-4 border-yellow-500"}
+              `}
             >
-              Supprimer
-            </button>
-          </li>
-        ))}
-      </ul>
+              <div className="flex items-center gap-3 overflow-hidden">
+                {/* La case à cocher personnalisée */}
+                <input 
+                  type="checkbox"
+                  checked={task.completed || false}
+                  onChange={() => toggleTask(task.id, task.completed)}
+                  className="w-5 h-5 accent-yellow-500 cursor-pointer rounded"
+                />
+                
+                {/* Le texte (rayé si fini) */}
+                <span className={`text-lg truncate ${task.completed ? "line-through text-gray-500" : ""}`}>
+                  {task.title}
+                </span>
+              </div>
+
+              <button 
+                onClick={() => deleteTask(task.id)}
+                className="text-gray-500 hover:text-red-500 transition p-2"
+                title="Supprimer"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
